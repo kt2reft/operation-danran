@@ -3,7 +3,8 @@
 ブラウザで遊べる3Dパニック協力ゲームです。1〜4人で遊べて、同じ画面に集まっても、オンラインでも協力できます。
 オンラインはアカウント不要で、招待リンクか4文字のコードで参加できます。
 
-**▶ いますぐ遊ぶ：https://kt2reft.github.io/operation-danran/**（GitHub Pages・オンライン協力はP2P方式）
+**▶ いますぐ遊ぶ：https://kt2reft.github.io/operation-danran/
+**（GitHub Pages・オンライン協力はP2P方式）
 
 ## 入っているファイル
 
