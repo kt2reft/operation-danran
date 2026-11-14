@@ -68,6 +68,8 @@ button:focus-visible{outline:3px solid var(--yama);outline-offset:2px}
 .score{text-align:right;font-family:var(--f-display);font-size:19px;font-variant-numeric:tabular-nums;line-height:1.1}
 .score small{display:block;font-family:var(--f-body);font-size:10px;font-weight:900;color:var(--yama);min-height:12px}
 .chips{display:flex;gap:6px}
+.chips.many{flex-wrap:wrap}.chips.many .chip{flex:0 1 calc(25% - 5px);padding:3px 4px;column-gap:4px}.chips.many .nm{font-size:10px}.chips.many .av{transform:scale(.85)}
+.nm small.pn{font-size:9px;font-weight:900;margin-left:3px}
 .chip{flex:1;min-width:0;display:grid;grid-template-columns:auto 1fr;grid-template-areas:"av nm" "av bar" "rt rt";align-items:center;column-gap:6px;row-gap:2px;background:rgba(18,24,50,.86);border:2px solid var(--ai-3);border-radius:10px;padding:5px 6px}
 .chip.w{border-color:var(--yama)}
 .chip.d{border-color:var(--shu);animation:blink .6s infinite}
@@ -220,6 +222,7 @@ body.touch.padp1 #joy{display:none}
   #hud{padding:14px 16px}
   .hud-top{width:min(560px,60%);}
   .chips{position:absolute;right:16px;top:14px;flex-direction:column;width:230px}
+  .chips.many{flex-wrap:nowrap;width:210px}.chips.many .chip{flex:none}.chips.many .rt{display:none}
   .chip{flex:none}
   .rt{display:block}
   .toasts{max-width:520px}
@@ -378,16 +381,25 @@ const CHARS={
     skill:{name:'すりすり',desc:'周囲3.5mの家族の怒りを大回復'},foe:'罠と証拠品をばらまく'},
   dad:{name:'父',mark:'父',col:'#7d5f3a',speed:2.6,carry:1,slow:.85,npcSpeed:1.1,spd:'極遅',car:'弱',stars:4,
     skill:{name:'一喝',desc:'家族全員を3秒止め、口論も強制終了'},foe:'ビールを要求する'},
-  guest:{name:'来客',mark:'客',col:'#5b6fb5',npcSpeed:0}
+  guest:{name:'来客',mark:'客',col:'#5b6fb5',npcSpeed:0},
+  gpa:{name:'祖父',mark:'祖',col:'#8a7a5c',npcSpeed:1.0},
+  gma:{name:'祖母',mark:'祖',col:'#b07a9a',npcSpeed:1.2},
+  cuz:{name:'いとこ',mark:'従',col:'#d9792b',npcSpeed:1.8},
+  aun:{name:'おば',mark:'叔',col:'#3f9fb0',npcSpeed:1.5}
 };
 const ORDER=['mom','sis','bro','cat','dad'];
+const RELATIVES=['gpa','gma','cuz','aun'];           // morning: relatives staying over, one per extra player
 const PCOL=['#f7b731','#46c8f0','#ff7ab6','#8fe07a'];
 const LOOK={
   dad:{skin:0xf0c9a0,top:0xf4f1e8,bottom:0x9fb8c8,hair:0x4a4a4a,style:'dad'},
   mom:{skin:0xf6d3b3,top:0xe0527f,bottom:0x5b4a6b,hair:0x4a2f22,style:'mom'},
   bro:{skin:0xf1d0b0,top:0x2f8f7a,bottom:0x2c3350,hair:0x1c1c22,style:'bro'},
   sis:{skin:0xf8d9bd,top:0xfff3f6,bottom:0x7a5cd6,hair:0xf2c94c,style:'sis'},
-  guest:{skin:0xf0c9a0,top:0x2a3a6a,bottom:0x25305a,hair:0x555555,style:'guest'}
+  guest:{skin:0xf0c9a0,top:0x2a3a6a,bottom:0x25305a,hair:0x555555,style:'guest'},
+  gpa:{skin:0xefc59a,top:0x9a7b5a,bottom:0x5a5a4a,hair:0xeeeeee,style:'dad'},
+  gma:{skin:0xf3d0b0,top:0xb07a9a,bottom:0x6a5a7a,hair:0xe4e4e4,style:'mom'},
+  cuz:{skin:0xf1d0b0,top:0xd9792b,bottom:0x33415c,hair:0x6b4a2a,style:'bro'},
+  aun:{skin:0xf4d2b2,top:0x3f9fb0,bottom:0x4a4a5c,hair:0x7a4a30,style:'mom'}
 };
 const STAGES={
   dinner:{name:'夕飯の配膳',time:180,brief:'コンロで料理を作り、ちゃぶ台へ運ぶ。父のビール要求と母の地獄耳に注意。',goalName:'配膳',
@@ -416,7 +428,14 @@ const REQ={
 };
 const REQ_KEYS=Object.keys(REQ);
 const EVID=[{name:'0点のテスト',emoji:'📄',col:0xffffff},{name:'へそくり',emoji:'✉️',col:0xc9a36b},{name:'割れた皿',emoji:'🍽️',col:0xdfe8f0},{name:'課金のレシート',emoji:'🧾',col:0xf4f0d0},{name:'父の馬券',emoji:'🎫',col:0xf2a0a0}];
-const ACTS=['仲裁する','ビールを渡す','料理を渡す','朝ごはんを出す','なでる','トイレへ誘導','もてなす','配膳する','料理する','料理を取る','焦げを片付ける','ビールを出す','ルーターを復旧','証拠品を拾う','証拠隠滅','捨てる'];
+const ACTS=['仲裁する','ビールを渡す','料理を渡す','朝ごはんを出す','なでる','トイレへ誘導','もてなす','配膳する','料理する','料理を取る','焦げを片付ける','ビールを出す','ルーターを復旧','証拠品を拾う','証拠隠滅','捨てる','自分で一杯やる','自分で食べる'];
+/* family relations: who rubs whom the wrong way (weight = how often it flares up) and what about */
+const REL={
+  'mom,dad':[1.4,'へそくりの件で'],'mom,sis':[1.6,'門限の件で'],'bro,mom':[1.2,'部屋の片付けで'],'cat,mom':[1,'台所に乗った件で'],
+  'dad,sis':[1.3,'洗濯物を一緒に洗う件で'],'bro,dad':[2,'就職の話で'],'cat,dad':[1.2,'新聞の上に座った件で'],
+  'bro,sis':[2,'ゲームの音量で'],'cat,sis':[1.5,'おやつの取り合いで'],'bro,cat':[1.1,'ケーブルをかじった件で']
+};
+const relOf=(a,b)=>REL[[a.id,b.id].sort().join(',')]||[1,'ささいなことで'];
 const STOVE_ST=['idle','cook','ready','burnt'];
 const AWARDS=['影のMVP','歩く火薬庫','奇跡の火消し職人','忍び足の達人','平凡な一日'];
 
@@ -756,7 +775,6 @@ function cycleChar(li,dir){
 function cycleStage(dir){if(NET.mode==='guest')return;const i=STAGE_KEYS.indexOf(SEL.stage);SEL.stage=STAGE_KEYS[(i+dir+STAGE_KEYS.length)%STAGE_KEYS.length];SFX_RAW.tick();renderMenu();}
 function startProblem(slots){
   if(NET.mode==='guest')return'ホストの開始を待っています';
-  if(SEL.stage==='morning'&&!ORDER.some(o=>o!=='cat'&&!slots.some(s=>s.char===o)))return'朝の身支度は、猫以外の家族を1人以上NPCとして残してください';
   return'';
 }
 function tryStart(){
@@ -767,6 +785,8 @@ function tryStart(){
 }
 
 /* ---------- game setup ---------- */
+function addRing(c){c.ring=flat(new THREE.RingGeometry(2.93,3,48),0x6fb6ff,.7);c.ring.position.y=.05;c.m.g.add(c.ring);c.disc=flat(new THREE.CircleGeometry(3,40),0x6fb6ff,.09);c.disc.position.y=.04;c.m.g.add(c.disc);}
+function addCone(c){c.cone=coneMesh(4.5,.55,0xffd23f);c.cone.position.y=.05;c.m.g.add(c.cone);}
 function startGame(cfg,mode){
   clearDynamic();const st=STAGES[cfg.st];setLights(st);
   NET.quiet++;NET.evq=[];
@@ -776,8 +796,9 @@ function startGame(cfg,mode){
     stats:{tasks:0,noise:0,calm:0,near:0,maxHate:0},bd:{main:0,sub:0,calm:0,pen:0,bonus:0},wash:{occ:null,queue:[]},toilet:{occ:null},seatI:0,
     guest:null,byId:{},hints:{},lastTick:99,heat:0,bodies:[],camShake:0,rs:null,res:null,itemKey:'',trapKey:'',dishKey:'',resT:0};
   const n=cfg.ch.length,isP=id=>cfg.ch.includes(id),morning=G.stage==='morning';
-  G.pace=1+.45*(n-1);G.hateMul=1+.2*(n-1);G.cookT=isP('mom')?4:6;
-  ORDER.forEach(id=>{const si=cfg.ch.indexOf(id),a=newActor(id,si>=0);G.actors.push(a);G.byId[id]=a;
+  G.pace=1+.45*(n-1);G.hateMul=1+.35*(n-1);G.cookT=isP('mom')?4:6;G.multi=n>1;G.famT=rand(16,22);G.fam=[];
+  const roster=ORDER.concat(morning&&n>1?RELATIVES.slice(0,n):[]);        // morning: a relative sleeps over for every extra player
+  roster.forEach(id=>{const si=cfg.ch.indexOf(id),a=newActor(id,si>=0);G.actors.push(a);G.byId[id]=a;
     if(si<0){G.npcs.push(a);return;}
     a.slot=si;a.peer=cfg.pe[si]||'';
     if(mode==='guest'){a.ctrl=a.peer&&a.peer===NET.myPeer?'local':'mirror';if(a.ctrl==='local')a.dev=PARTY[0].dev;}
@@ -786,12 +807,12 @@ function startGame(cfg,mode){
   G.players.sort((a,b)=>a.slot-b.slot);G.locals=G.players.filter(p=>p.ctrl==='local');G.player=G.locals[0]||G.players[0];
   const OFF=[[0,0],[1.2,0],[-1.2,0],[0,1]];
   G.players.forEach(p=>place(p,{x:P.start.x+OFF[p.slot][0],z:P.start.z+OFF[p.slot][1]},Math.PI));
-  let wake=0;const order=ORDER.filter(i=>i!=='cat'&&!isP(i)).sort(()=>Math.random()-.5);
+  let wake=0;const order=roster.filter(i=>i!=='cat'&&!isP(i)).sort(()=>Math.random()-.5);
   for(const c of G.npcs){
-    if(c.id==='mom'){c.ring=flat(new THREE.RingGeometry(2.93,3,48),0x6fb6ff,.7);c.ring.position.y=.05;c.m.g.add(c.ring);c.disc=flat(new THREE.CircleGeometry(3,40),0x6fb6ff,.09);c.disc.position.y=.04;c.m.g.add(c.disc);}
-    if(c.id==='sis'){c.cone=coneMesh(4.5,.55,0xffd23f);c.cone.position.y=.05;c.m.g.add(c.cone);}
+    if(c.id==='mom')addRing(c);
+    if(c.id==='sis')addCone(c);
     if(morning&&c.id!=='cat'){
-      const starts={mom:{x:-8,z:5.5},dad:{x:-6.5,z:5.9},sis:{x:-.5,z:5.8},bro:P.broSeat};
+      const starts={mom:{x:-8,z:5.5},dad:{x:-6.5,z:5.9},sis:{x:-.5,z:5.8},bro:P.broSeat,gpa:{x:-4.9,z:6.1},gma:{x:-7.9,z:3.2},cuz:{x:2.2,z:5.9},aun:{x:-1.9,z:6.1}};
       place(c,starts[c.id],0);c.state='sleep';c.wakeAt=3+order.indexOf(c.id)*5;wake++;
     }else if(c.id==='dad'){place(c,P.seats[0],Math.PI/2);c.sit=true;c.state='sit';c.types=['beer'];c.nextReq=rand(9,14);}
     else if(c.id==='mom'){place(c,{x:-1,z:-4.5},0);c.state='patrol';c.wait=1.5;}
@@ -799,12 +820,18 @@ function startGame(cfg,mode){
     else if(c.id==='sis'){place(c,{x:.8,z:4.6},-1);c.state='wander';c.wait=2;c.types=isP('bro')?['dish','router']:['dish'];c.nextReq=rand(30,40);}
     else if(c.id==='cat'){place(c,{x:-6,z:5.2},1);c.state='zoom';c.types=['pet'];c.nextReq=rand(18,26);}
   }
-  G.goal=morning?Math.max(1,wake):5+3*(n-1);
+  G.goal=morning?Math.max(1,wake):5+4*(n-1);
   if(G.stage==='guest'){
     const g=newActor('guest',false);place(g,P.seats[3],Math.PI);g.sit=true;g.look=Math.PI;g.state='sit';
     g.cone=coneMesh(6,.6,0x8fa8ff);g.cone.position.y=.05;g.m.g.add(g.cone);G.actors.push(g);G.npcs.push(g);G.guest=g;G.byId.guest=g;
   }
-  G.usesBeer=!morning&&!!G.byId.dad&&!G.byId.dad.isPlayer;
+  G.usesBeer=!morning&&!!G.byId.dad&&(!G.byId.dad.isPlayer||n>1);
+  if(G.multi){                                           // players are family too: they get angry, ask for things, argue, and keep their own quirks
+    const HT={dad:['beer'],bro:['router'],sis:['dish'],cat:['pet'],mom:[]};
+    G.players.forEach(p=>{p.types=morning?[]:HT[p.id];p.nextReq=rand(20,30);p.mis=rand(14,22);p.state='idle';
+      if(p.id==='mom')addRing(p);if(p.id==='sis')addCone(p);});
+  }
+  G.fam=G.npcs.concat(G.multi?G.players:[]);
   G.players.forEach(p=>{const c=new THREE.Color(PCOL[p.slot]).getHex(),r=flat(new THREE.RingGeometry(.42,.54,32),c,.9);r.position.y=.05;p.m.g.add(r);});
   G.actors.forEach(a=>{a.tx=a.x;a.tz=a.z;a.trot=a.rot;});
   buildChips();buildPcards();
@@ -866,30 +893,64 @@ function tableDish(x,z,y){const d=makeItem('dish');d.position.set(x,y||.47,z);sc
 function reqInterval(){return rand(20,30)*lerp(1,.65,clamp(G.time/G.st.time,0,1))/G.pace;}
 function startReq(n,type){
   if(type==='router'){if(G.routerDown){n.nextReq=G.time+6;return;}G.routerDown=true;}
-  n.req={type,t:0,pat:REQ[type].pat,warned:false};toast(REQ[type].line(n.def.name));SFX.req();
+  n.req={type,t:0,pat:REQ[type].pat*(n.isPlayer?1.25:1),warned:false};toast(REQ[type].line(n.isPlayer?`${n.def.name}（${pTag(n)}）`:n.def.name));SFX.req();
 }
 function fulfil(n,p){
-  if(!n.req)return;const t=n.req.type;n.req=null;n.nextReq=G.time+reqInterval();addHate(n,-12);task(p);gain(250,'sub',n.x,n.z);SFX.give();
+  if(!n.req)return;const t=n.req.type,self=n===p;n.req=null;n.nextReq=G.time+reqInterval();addHate(n,self?-8:-12);if(!self){task(p);gain(250,'sub',n.x,n.z);}SFX.give();
   if(t==='router')G.routerDown=false;
   if(t==='pet')burst(n.x,.8,n.z,'heart',6);
   if(t==='breakfast'){const dx=P.table.x-n.x,dz=P.table.z-n.z,d=Math.hypot(dx,dz)||1;tableDish(n.x+dx/d*1.05,n.z+dz/d*1.05);}
 }
 
 /* ---------- arguments ---------- */
-function canArgue(n){return!n.gone&&n.id!=='guest'&&n.frozen<=0&&!n.arguing&&n.spotT<=0&&!['sleep','wash','toilet','eat','seated'].includes(n.state);}
+function canArgue(n){return!n.gone&&n.id!=='guest'&&n.frozen<=0&&n.stun<=0&&!n.arguing&&n.spotT<=0&&!['sleep','wash','toilet','eat','seated'].includes(n.state);}
+function startArgue(a,b,why,tag){
+  a.arguing=b;b.arguing=a;a.argT=b.argT=0;G.argCd[a.id+b.id]=G.argCd[b.id+a.id]=G.time+26;
+  toast(`${tag||''}${a.def.name}と${b.def.name}が${why}口論を始めた。近づいて仲裁しよう`,'warn');SFX.alarm();
+}
 function checkArguments(dt){
   G.argTick-=dt;if(G.argTick>0||G.time<G.argNext)return;G.argTick=.5;
-  const L=G.npcs;
+  const L=G.fam;
   for(let i=0;i<L.length;i++)for(let j=i+1;j<L.length;j++){
     const a=L[i],b=L[j];if(!canArgue(a)||!canArgue(b)||dist(a.x,a.z,b.x,b.z)>2)continue;
-    const key=a.id+b.id;if((G.argCd[key]||0)>G.time||G.time<G.argNext||Math.random()>.1)continue;
-    a.arguing=b;b.arguing=a;a.argT=b.argT=0;G.argCd[key]=G.time+26;G.argNext=G.time+11;
-    toast(`${a.def.name}と${b.def.name}が口論を始めた。近づいて仲裁しよう`,'warn');SFX.alarm();
+    const r=relOf(a,b);
+    if((G.argCd[a.id+b.id]||0)>G.time||Math.random()>.1*(G.multi?r[0]:1))continue;
+    G.argNext=G.time+(G.multi?11/(1+.25*(G.players.length-1)):11);startArgue(a,b,r[1]);return;
   }
 }
 function endArgue(a,p){
   const b=a.arguing;if(!b)return;a.arguing=b.arguing=null;G.argCd[a.id+b.id]=G.argCd[b.id+a.id]=G.time+26;
   if(p){addHate(a,-6);addHate(b,-6);calmBy(p);gain(100,'calm',(a.x+b.x)/2,(a.z+b.z)/2);SFX.give();toast(`${pTag(p)}${pTag(p)?'が':''}仲裁成功`);}
+  else if(G.multi&&a.argT>=10){                                    // nobody stepped in: it spreads to whoever is standing close
+    addHate(a,6);addHate(b,6);
+    const near=G.fam.filter(c=>c!==a&&c!==b&&canArgue(c)&&(dist(c.x,c.z,a.x,a.z)<4.5||dist(c.x,c.z,b.x,b.z)<4.5));
+    if(near.length&&Math.random()<.6){const c=pick(near),x=pick([a,b]);if(canArgue(x)){G.argNext=G.time+8;startArgue(x,c,relOf(x,c)[1],'飛び火！　');}}
+  }
+}
+/* family incidents (multiplayer): every extra player is also a family member, so the household keeps flaring up on its own */
+function famEvent(){
+  const L=G.fam.filter(canArgue);if(L.length<2)return;
+  if(G.byId.bro&&canArgue(G.byId.bro)&&Math.random()<.25){const b=G.byId.bro;toast('長男「ボリューム全開でゲーム中」 家中に爆音が響く','warn');emitNoise(b.x,b.z,3,null);return;}
+  let best=null,bw=-1;
+  for(let k=0;k<8;k++){const a=pick(L),b=pick(L);if(a===b||(G.argCd[a.id+b.id]||0)>G.time)continue;const w=relOf(a,b)[0]*(.6+Math.random());if(w>bw){bw=w;best=[a,b];}}
+  if(best)startArgue(best[0],best[1],relOf(best[0],best[1])[1],'家族会議！　');
+}
+function famTick(dt){
+  if(!G.multi)return;
+  G.famT-=dt;if(G.famT<=0){G.famT=rand(18,26)/(1+.4*(G.players.length-1));famEvent();}
+  for(const a of G.fam){if(!a.arguing||a.gone)continue;                  // bystanders get dragged in
+    for(const c of G.fam){if(c===a||c===a.arguing||c.arguing||c.gone||c.id==='guest')continue;if(dist(c.x,c.z,a.x,a.z)<3.5)addHate(c,.55*dt);}}
+}
+/* ---------- the human family members keep their own quirks ---------- */
+function updateHumanFam(p,dt){
+  p.hearCd=Math.max(0,p.hearCd-dt);p.ringFlash=Math.max(0,p.ringFlash-dt);
+  addHate(p,.17*G.hateMul*dt);
+  if(p.arguing){p.argT+=dt;addHate(p,2.6*dt);if(p.argT>10)endArgue(p,null);return;}
+  if(p.req){p.req.t+=dt;const late=p.req.t>p.req.pat;addHate(p,(late?3:1)*G.hateMul*dt);
+    if(late&&!p.req.warned){p.req.warned=true;toast(`${p.def.name}（${pTag(p)}）が限界寸前。${REQ[p.req.type].text}を急げ`,'warn');SFX.alarm();}}
+  else if(p.types.length&&G.time>=p.nextReq)startReq(p,pick(p.types));
+  if(p.id==='cat'){p.mis-=dt;if(p.mis<=0){p.mis=rand(16,24);if(!blocked[cellAt(p.x,p.z)]){
+    if(Math.random()<.5)spawnTrap(p.x,p.z);else spawnEvidence(p.x,p.z);toast(`${pTag(p)}猫のいたずら。足元に何か落ちた`,'warn');}}}
 }
 
 /* ---------- evidence & traps ---------- */
@@ -905,11 +966,11 @@ function spawnTrap(x,z){
 }
 function emitNoise(x,z,loud,p){
   if(loud)rippleN(x,z,5,0xff5a36);
-  const mom=G.byId.mom;if(!mom||mom.isPlayer||mom.gone||mom.frozen>0||G.distract>0||mom.hearCd>0)return;
+  const mom=G.byId.mom;if(!mom||mom.gone||mom.frozen>0||G.distract>0||mom.hearCd>0||(mom.isPlayer&&(!G.multi||p===mom)))return;
   if(dist(mom.x,mom.z,x,z)>3+loud)return;
-  mom.hearCd=1.5;mom.ringFlash=.7;addHate(mom,10);G.stats.noise++;if(p)p.st.noise++;gain(-50,'pen',mom.x,mom.z,'騒音');SFX.bad();
-  toast('母「誰！ドタバタしてるのは！」','warn');
-  if(mom.state==='patrol'||mom.state==='investigate'){mom.state='investigate';goTo(mom,x,z);}
+  mom.hearCd=1.5;mom.ringFlash=.7;addHate(mom,mom.isPlayer?7:10);G.stats.noise++;if(p)p.st.noise++;gain(-50,'pen',mom.x,mom.z,'騒音');SFX.bad();
+  toast(mom.isPlayer?`母（${pTag(mom)}）「誰！ドタバタしてるのは！」`:'母「誰！ドタバタしてるのは！」','warn');
+  if(!mom.isPlayer&&(mom.state==='patrol'||mom.state==='investigate')){mom.state='investigate';goTo(mom,x,z);}
 }
 
 /* ---------- players ---------- */
@@ -918,6 +979,7 @@ function moveLocal(p,inp,dt){                                  // movement on th
   let ix=inp.x,iz=inp.z;const mag=Math.hypot(ix,iz);if(mag>1){ix/=mag;iz/=mag;}
   p.moving=0;p.dashing=false;
   if(p.stun>0){p.rot+=dt*14;return;}
+  if(p.arguing&&G.multi){const o=p.arguing;p.rot=rotTo(p.rot,Math.atan2(o.x-p.x,o.z-p.z),dt*8);return;}   // caught up in a family quarrel
   if(mag>.12){
     const dash=inp.dash&&!p.inGuest&&!(p.id==='cat'&&p.held.length);
     const sp=p.def.speed*(p.held.length?p.def.slow:1)*(dash?1.55:1)*(p.inGuest?.5:1)*Math.min(1,mag);
@@ -937,7 +999,7 @@ function updatePlayerLocal(p,inp,dt){
   moveLocal(p,inp,dt);if(p.stun>0)p.stun-=dt;
   if(p.dashing){p.noiseT-=dt;if(p.noiseT<=0){p.noiseT=.3;emitNoise(p.x,p.z,0,p);}}
   checkTraps(p);
-  p.act=p.stun>0?null:findAction(p);
+  p.act=(p.stun>0||p.arguing)?null:findAction(p);
   if(inp.act&&p.act)p.act.fn();
   if(inp.skill&&p.cd<=0&&p.stun<=0)useSkill(p);
 }
@@ -955,20 +1017,20 @@ function updatePlayerRemote(p,dt){                             // host side: an 
     as=num(inp[6])|0;ss=num(inp[7])|0;
   }
   checkTraps(p);
-  p.act=p.stun>0?null:findAction(p);
+  p.act=(p.stun>0||p.arguing)?null:findAction(p);
   if(as>p.actSeq){p.actSeq=as;if(p.act)p.act.fn();}
   if(ss>p.skillSeq){p.skillSeq=ss;if(p.cd<=0&&p.stun<=0)useSkill(p);}
 }
 function findAction(p){
   const c=[],has=t=>p.held.some(h=>h.type===t),room=p.held.length<p.def.carry;
   const add=(x,z,range,prio,code,fn)=>{const d=dist(p.x,p.z,x,z);if(d<=range)c.push({s:d-prio,x,z,c:code,fn});};
-  for(const n of G.npcs){
-    if(n.gone||n.id==='guest')continue;
-    if(n.arguing){add(n.x,n.z,2.1,.8,0,()=>endArgue(n,p));continue;}
+  for(const n of G.fam){
+    if(n.gone||n.id==='guest')continue;const me=n===p;
+    if(n.arguing){if(!me)add(n.x,n.z,2.1,.8,0,()=>endArgue(n,p));continue;}
     if(n.req){const t=n.req.type;
-      if(t==='beer'&&has('beer'))add(n.x,n.z,2.1,.5,1,()=>{if(!n.req)return;takeItem(p,'beer');fulfil(n,p);});
-      else if((t==='dish'||t==='breakfast')&&has('dish'))add(n.x,n.z,2.1,.5,t==='dish'?2:3,()=>{if(!n.req)return;takeItem(p,'dish');fulfil(n,p);});
-      else if(t==='pet')add(n.x,n.z,1.5,.5,4,()=>fulfil(n,p));}
+      if(t==='beer'&&has('beer'))add(n.x,n.z,2.1,me?.1:.5,me?16:1,()=>{if(!n.req)return;takeItem(p,'beer');fulfil(n,p);});
+      else if((t==='dish'||t==='breakfast')&&has('dish'))add(n.x,n.z,2.1,me?.1:.5,me?17:t==='dish'?2:3,()=>{if(!n.req)return;takeItem(p,'dish');fulfil(n,p);});
+      else if(t==='pet'&&!me)add(n.x,n.z,1.5,.5,4,()=>fulfil(n,p));}
     if(n.state==='queue'&&!G.toilet.occ)add(n.x,n.z,1.7,.3,5,()=>{if(n.state==='queue'&&!G.toilet.occ)divert(n,p);});
   }
   if(G.guest&&has('dish'))add(G.guest.x,G.guest.z,2.3,.4,6,()=>{takeItem(p,'dish');const g=G.guest;tableDish(g.x+rand(-.6,.6),g.z-1.1-rand(0,.5));G.progress++;addHate(g,-8);task(p);gain(300,'main',g.x,g.z);SFX.main();});
@@ -978,7 +1040,7 @@ function findAction(p){
     else if(s.state==='ready'&&room)add(s.x,fz,1.2,.2,9,()=>{if(s.state!=='ready')return;s.state='idle';giveItem(p,'dish');});
     else if(s.state==='burnt')add(s.x,fz,1.2,0,10,()=>{if(s.state!=='burnt')return;s.state='idle';SFX.pick();});});
   if(room&&G.usesBeer)add(P.fridge.x,-5.6,1.3,0,11,()=>giveItem(p,'beer'));
-  if(G.routerDown)add(P.router.x,-1.1,1.2,.4,12,()=>{const n=G.npcs.find(n=>n.req&&n.req.type==='router');if(n)fulfil(n,p);else G.routerDown=false;});
+  if(G.routerDown)add(P.router.x,-1.1,1.2,.4,12,()=>{const n=G.fam.find(n=>n.req&&n.req.type==='router');if(n)fulfil(n,p);else G.routerDown=false;});
   if(room)for(const e of G.items)add(e.x,e.z,1.2,.3,13,()=>{if(!G.items.includes(e))return;removeEvidence(e);giveItem(p,'evidence',e.kind);});
   if(p.held.length)add(P.trash.x,P.trash.z,1.5,.1,has('evidence')?14:15,()=>{
     if(has('evidence')){takeItem(p,'evidence');task(p);gain(150,'sub',P.trash.x,P.trash.z);SFX.give();}else{p.held.pop();refreshHeld(p);SFX.pick();}});
@@ -989,13 +1051,13 @@ function divert(n,p){
   task(p);gain(100,'calm',n.x,n.z);SFX.give();toast(`${n.def.name}をトイレへ誘導した`);
 }
 function useSkill(p){
-  p.cd=12;SFX.skill();let calmed=false;const live=G.npcs.filter(n=>!n.gone),who=pTag(p)?pTag(p)+'の':'';
+  p.cd=12;SFX.skill();let calmed=false;const live=G.fam.filter(n=>!n.gone&&n!==p),who=pTag(p)?pTag(p)+'の':'';
   rippleN(p.x,p.z,6,0x3fb58a);
   if(p.id==='bro'){live.forEach(n=>{if(n.hate>1)calmed=true;addHate(n,-18);});G.distract=4;toast(`${who}家電ハック。4秒間、センサー無効`);}
   else if(p.id==='mom'){if(p.held.length<p.def.carry)giveItem(p,'dish');live.forEach(n=>{if(dist(p.x,p.z,n.x,n.z)<4){if(n.hate>1)calmed=true;addHate(n,-30);}});toast(`${who}神速料理。できたてをどうぞ`);}
-  else if(p.id==='sis'){live.forEach(n=>{n.frozen=5;});toast(`${who}バズ動画。全員が5秒間スマホに釘付け`);calmed=true;}
+  else if(p.id==='sis'){live.forEach(n=>{if(!n.isPlayer)n.frozen=5;});toast(`${who}バズ動画。全員が5秒間スマホに釘付け`);calmed=true;}
   else if(p.id==='cat'){live.forEach(n=>{if(dist(p.x,p.z,n.x,n.z)<3.5){if(n.hate>1)calmed=true;addHate(n,-40);burst(n.x,1.4,n.z,'heart',5);}});toast(`${who}すりすり。近くの家族がとろけた`);}
-  else{live.forEach(n=>{n.frozen=3;if(n.arguing)endArgue(n,null);addHate(n,-8);});toast(`${who}一喝。「静かにせんか」`);calmed=true;}
+  else{live.forEach(n=>{if(!n.isPlayer)n.frozen=3;if(n.arguing)endArgue(n,null);addHate(n,-8);});toast(`${who}一喝。「静かにせんか」`);calmed=true;}
   if(calmed){calmBy(p);gain(100,'calm',p.x,p.z);}
 }
 
@@ -1064,29 +1126,37 @@ function updateSystems(dt){
   G.distract=Math.max(0,G.distract-dt);
   G.stoves.forEach(s=>{
     if(s.state==='cook'){s.t+=dt;if(s.t>=G.cookT){s.state='ready';s.t=0;SFX.pick();}}
-    else if(s.state==='ready'){s.t+=dt;if(s.t>=16){s.state='burnt';const v=G.npcs.find(n=>n.id==='mom'&&!n.gone)||G.npcs.find(n=>!n.gone&&n.id!=='cat');if(v)addHate(v,10);toast('料理が焦げた。コンロを放置しすぎた','warn');SFX.bad();emitNoise(s.x,-5.8,2,null);}}
+    else if(s.state==='ready'){s.t+=dt;if(s.t>=16){s.state='burnt';const v=G.fam.find(n=>n.id==='mom'&&!n.gone)||G.fam.find(n=>!n.gone&&n.id!=='cat'&&n.id!=='guest');if(v)addHate(v,10);toast('料理が焦げた。コンロを放置しすぎた','warn');SFX.bad();emitNoise(s.x,-5.8,2,null);}}
   });
   G.evT-=dt;
   if(G.evT<=0){G.evT=rand(16,26)*(G.stage==='dinner'?1:.85)/G.pace;const sis=G.byId.sis;
-    const pt=randPoint((x,z)=>inCommon(x,z)&&G.players.every(p=>dist(x,z,p.x,p.z)>3)&&(!sis||sis.isPlayer||sis.gone||dist(x,z,sis.x,sis.z)>5.5)&&(!G.guest||!inCone(G.guest.x,G.guest.z,G.guest.look,x,z,6.5,1.5)));
+    const pt=randPoint((x,z)=>inCommon(x,z)&&G.players.every(p=>dist(x,z,p.x,p.z)>3)&&(!sis||sis.gone||(sis.isPlayer&&!G.multi)||dist(x,z,sis.x,sis.z)>5.5)&&(!G.guest||!inCone(G.guest.x,G.guest.z,G.guest.look,x,z,6.5,1.5)));
     spawnEvidence(pt.x,pt.z);}
   for(let i=G.traps.length-1;i>=0;i--){const t=G.traps[i];t.t-=dt;if(t.t<=0){drop(t.mesh);G.traps.splice(i,1);}}
-  checkArguments(dt);
+  checkArguments(dt);famTick(dt);
   const sis=G.byId.sis;
-  if(sis&&!sis.isPlayer&&!sis.gone){
+  if(sis&&!sis.gone&&(!sis.isPlayer||G.multi)){
+    const hu=sis.isPlayer;
     let seen=null;if(sis.frozen<=0&&G.distract<=0&&!sis.arguing)for(const e of G.items){if(inCone(sis.x,sis.z,sis.rot,e.x,e.z,4.5,.55)&&sightClear(sis.x,sis.z,e.x,e.z)){seen=e;break;}}
-    if(seen){if(sis.spotT===0){toast('妹「え、なにこれ。撮っとこ」 3秒以内に拾おう','warn');SFX.alarm();}sis.spotT+=dt;sis.rot=rotTo(sis.rot,Math.atan2(seen.x-sis.x,seen.z-sis.z),dt*4);
-      if(sis.spotT>=3){removeEvidence(seen);sis.spotT=0;addHate(sis,50);gain(-50,'pen',sis.x,sis.z,'拡散された');SFX.bad();toast('妹が証拠品をSNSに投稿した。妹の怒り+50','warn');}}
+    if(seen){if(sis.spotT===0){toast(hu?`妹（${pTag(sis)}）「え、なにこれ。撮っとこ」 3秒以内に拾おう`:'妹「え、なにこれ。撮っとこ」 3秒以内に拾おう','warn');SFX.alarm();}sis.spotT+=dt;if(!hu)sis.rot=rotTo(sis.rot,Math.atan2(seen.x-sis.x,seen.z-sis.z),dt*4);
+      if(sis.spotT>=3){removeEvidence(seen);sis.spotT=0;addHate(sis,hu?35:50);gain(-50,'pen',sis.x,sis.z,'拡散された');SFX.bad();toast(`妹が証拠品をSNSに投稿した。妹の怒り+${hu?35:50}`,'warn');}}
     else if(sis.spotT>0){if(sis.spotT>.4){G.stats.near++;gain(-50,'pen',sis.x,sis.z,'ニアミス');}sis.spotT=0;}
+  }
+  const mm=G.byId.mom;                                          // a mom played by a human still has sharp eyes
+  if(mm&&G.multi&&mm.isPlayer&&!mm.gone){
+    let seen=null;if(G.distract<=0&&!mm.arguing)for(const e of G.items){if(dist(mm.x,mm.z,e.x,e.z)<2.4&&sightClear(mm.x,mm.z,e.x,e.z)){seen=e;break;}}
+    if(seen){if(mm.spotT===0){toast(`母（${pTag(mm)}）「ん？　それ何？」 2.5秒以内に拾おう`,'warn');SFX.alarm();}mm.spotT+=dt;
+      if(mm.spotT>=2.5){removeEvidence(seen);mm.spotT=0;addHate(mm,22);gain(-50,'pen',mm.x,mm.z,'発見された');SFX.bad();toast('母「これは何なの！？」','warn');}}
+    else if(mm.spotT>0){if(mm.spotT>.4){G.stats.near++;gain(-50,'pen',mm.x,mm.z,'ニアミス');}mm.spotT=0;}
   }
   const g=G.guest;
   if(g){g.look=Math.PI+Math.sin(G.time*.45)*1.25;g.rot=g.look;let awk=0;
     if(g.frozen<=0&&G.distract<=0){for(const e of G.items)if(inCone(g.x,g.z,g.look,e.x,e.z,6,.6)&&sightClear(g.x,g.z,e.x,e.z))awk+=7;
-      for(const n of G.npcs)if(n.arguing&&inCone(g.x,g.z,g.look,n.x,n.z,6,.6))awk+=2.5;}
+      for(const n of G.fam)if(n.arguing&&inCone(g.x,g.z,g.look,n.x,n.z,6,.6))awk+=2.5;}
     g.awk=awk>0;if(awk>0){addHate(g,awk*dt);hint('awk','来客が証拠品や口論を見て気まずそうだ。視界から片付けよう','warn');}}
 }
 function checkEnd(){
-  for(const n of G.npcs)if(!n.gone&&n.hate>=100){startFlip(0,n);return;}
+  for(const n of G.fam)if(!n.gone&&n.hate>=100){startFlip(0,n);return;}
   if(G.progress>=G.goal){startClear();return;}
   if(G.timeLeft<=0){G.timeLeft=0;startFlip(2,null);}
 }
@@ -1096,7 +1166,7 @@ function localTicks(dt){                                         // purely cosme
     if(s.state==='cook'&&Math.random()<dt*5)puff(s.x,1.1,s.z,'steam');
     stoveFood[i].visible=s.state!=='idle';stoveFood[i].material.color.setHex(s.state==='burnt'?0x2a2420:0xd9902f);});
   if(G.timeLeft<=10&&G.phase==='play'){const s=Math.ceil(G.timeLeft);if(s!==G.lastTick){G.lastTick=s;SFX_RAW.tick();}}
-  let mx=0;for(const n of G.npcs)if(!n.gone&&n.hate>mx)mx=n.hate;G.heat=mx/100;
+  let mx=0;for(const n of G.fam)if(!n.gone&&n.hate>mx)mx=n.hate;G.heat=mx/100;
 }
 
 /* ---------- endings ---------- */
@@ -1184,7 +1254,7 @@ function animActor(a,dt){
     else if(a.arguing){m.armL.rotation.x=-2.2+Math.sin(t*14)*.5;m.armR.rotation.x=-2.2+Math.cos(t*13)*.5;}
     else{m.armL.rotation.x=-sw;m.armR.rotation.x=m.phone?-1.9:sw;}
   }
-  const h=a.isPlayer?0:a.hate,k=clamp((h-40)/60,0,1);
+  const h=(a.isPlayer&&!G.multi)?0:a.hate,k=clamp((h-40)/60,0,1);
   m.skinMat.color.copy(m.skinBase).lerp(RED,k*.85);
   if(m.browL){m.browL.rotation.z=-(.05+k*.6);m.browR.rotation.z=.05+k*.6;}
   const hot=h>=75&&G.phase==='play';m.inner.position.x=hot?rand(-.035,.035):0;m.inner.position.z=hot?rand(-.035,.035):0;
@@ -1219,17 +1289,19 @@ function lbEnd(){for(let i=LB.n;i<LB.els.length;i++){const el=LB.els[i];if(el._v
 const bub=(icon,p,late)=>`<span class="bub${late?' late':''}" style="--p:${Math.round(clamp(p,0,100)/5)*5}"><span>${icon}</span></span>`;
 function drawLabels(dt){
   if(G.phase==='play'||G.phase==='clear'){
-    for(const n of G.npcs){if(n.gone)continue;const lv=n.hate>=75?' d':n.hate>=50?' w':'';let h='';
+    for(const n of G.fam){if(n.gone)continue;const lv=n.hate>=75?' d':n.hate>=50?' w':'',hu=n.isPlayer;let h='';
+      if(hu&&n.inGuest)h+=bub('😊',0,false);else if(hu&&n.stun>0)h+=bub('💫',0,false);
       if(n.arguing)h+=bub('💢',n.argT*10,true);
       else if(n.frozen>0)h+=bub('📱',0,false);
-      else if(n.spotT>0)h+=bub('📸',n.spotT/3*100,true);
+      else if(n.spotT>0)h+=bub(n.id==='mom'?'👀':'📸',n.spotT/(n.id==='mom'?2.5:3)*100,true);
       else if(n.req)h+=bub(REQ[n.req.type].icon,Math.min(100,n.req.t/n.req.pat*100),n.req.t>n.req.pat);
       else if(n.state==='sleep')h+=bub('💤',0,false);
       else if(n.state==='wash'||n.state==='toilet')h+=bub(n.state==='wash'?'🪥':'🚽',(1-n.t/7)*100,false);
       else if(n.state==='queue'&&!n.path)h+=bub('⏳',Math.min(100,(n.waitT||0)*8),n.waitT>3);
       else if(n.awk)h+=bub('😳',0,true);
       h+=`<i class="hb${lv}"><b style="width:${Math.round(n.hate/2)*2}%"></b></i>`;
-      lb(n.x,n.m.top-(n.sit?.38:0),n.z,h,'',!!(n.req||n.arguing||n.spotT>0));}
+      if(hu)h+=`<span class="ptag" style="--pc:${PCOL[n.slot]}">P${n.slot+1}${n.ctrl==='local'&&G.mode!=='offline'?' あなた':''}</span>`;
+      lb(n.x,n.m.top+(hu?.1:0)-(n.sit?.38:0),n.z,h,'',!!(n.req||n.arguing||n.spotT>0));}
     G.stoves.forEach(s=>{if(s.state==='cook')lb(s.x,1.5,s.z,bub('🍳',s.t/G.cookT*100,false));else if(s.state==='ready')lb(s.x,1.5,s.z,bub('🍛',s.t/16*100,s.t>11));else if(s.state==='burnt')lb(s.x,1.5,s.z,bub('💨',100,true));else lb(s.x,1.35,s.z,'<span class="tag">コンロ</span>');});
     if(G.usesBeer)lb(P.fridge.x,2,P.fridge.z,'<span class="tag">冷蔵庫</span>');
     lb(P.trash.x,.95,P.trash.z,'<span class="tag">ゴミ箱</span>');
@@ -1238,8 +1310,7 @@ function drawLabels(dt){
     if(G.stage==='morning')lb(P.door.x,.6,P.door.z+.4,'<span class="tag">玄関</span>');
     for(const e of G.items)lb(e.x,.6,e.z,`<span class="bub late"><span>${e.kind.emoji}</span></span>`,'',true);
     const multi=G.players.length>1,ml=G.locals.length>1;
-    for(const p of G.players){let h='';if(p.inGuest)h+=bub('😊',0,false);else if(p.stun>0)h+=bub('💫',0,false);
-      if(multi)h+=`<span class="ptag" style="--pc:${PCOL[p.slot]}">P${p.slot+1}${p.ctrl==='local'&&G.mode!=='offline'?' あなた':''}</span>`;
+    if(!G.multi)for(const p of G.players){let h='';if(p.inGuest)h+=bub('😊',0,false);else if(p.stun>0)h+=bub('💫',0,false);
       if(h)lb(p.x,p.m.top+.1,p.z,h);}
     if(G.phase==='play')for(const p of G.locals)if(p.act&&ACTS[p.act.c])lb(p.act.x,1.25,p.act.z,`<span class="prompt" style="--pc:${PCOL[p.slot]}">${ml?'P'+(p.slot+1)+' ':''}${ACTS[p.act.c]}</span>`);
     for(let i=G.floats.length-1;i>=0;i--){const f=G.floats[i];f.t+=dt;if(f.t>1.1){G.floats.splice(i,1);continue;}lb(f.x,1.6+f.t*1.2,f.z,`<span class="float ${f.cls}" style="opacity:${f.t>.7?((1.1-f.t)/.4).toFixed(2):1}">${esc(f.text)}</span>`);}
@@ -1247,8 +1318,9 @@ function drawLabels(dt){
   lbEnd();
 }
 function buildChips(){
-  $('#chips').innerHTML=G.npcs.map(n=>`<div class="chip" data-id="${n.id}"><span class="av" style="--c:${n.def.col}">${n.def.mark}<em></em></span><span class="nm">${n.def.name} <b>0%</b></span><span class="bar"><i></i></span><span class="rt"></span></div>`).join('');
-  G.npcs.forEach(n=>{const el=$(`.chip[data-id="${n.id}"]`);n.chip={el,pct:el.querySelector('.nm b'),bar:el.querySelector('.bar i'),rq:el.querySelector('em'),rt:el.querySelector('.rt'),k:''};});
+  $('#chips').innerHTML=G.fam.map(n=>`<div class="chip" data-id="${n.id}"><span class="av" style="--c:${n.def.col}">${n.def.mark}<em></em></span><span class="nm">${n.def.name}${n.isPlayer?`<small class="pn" style="color:${PCOL[n.slot]}">P${n.slot+1}</small>`:''} <b>0%</b></span><span class="bar"><i></i></span><span class="rt"></span></div>`).join('');
+  G.fam.forEach(n=>{const el=$(`.chip[data-id="${n.id}"]`);n.chip={el,pct:el.querySelector('.nm b'),bar:el.querySelector('.bar i'),rq:el.querySelector('em'),rt:el.querySelector('.rt'),k:''};});
+  $('#chips').classList.toggle('many',G.fam.length>6);
   $('#pips').innerHTML='<i></i>'.repeat(G.goal);
 }
 function buildPcards(){
@@ -1263,8 +1335,8 @@ function updateHud(){
   const s=Math.max(0,Math.ceil(G.timeLeft));setText('#timer',`${(s/60)|0}:${String(s%60).padStart(2,'0')}`);$('#timer').classList.toggle('low',s<=30);
   setText('#score',String(G.score));setText('#combo',G.combo>1&&G.time-G.lastGain<10?`団らんコンボ ×${G.combo}`:'');
   const pips=$('#pips').children;for(let i=0;i<pips.length;i++)pips[i].classList.toggle('on',i<G.progress);
-  for(const n of G.npcs){const c=n.chip,h=Math.round(n.hate),lv=n.gone?'gone':n.hate>=75?'d':n.hate>=50?'w':'';
-    const icon=n.arguing?'💢':n.spotT>0?'📸':n.req?REQ[n.req.type].icon:'';const text=n.gone?'出発済み':n.arguing?`${n.arguing.def.name}と口論中`:n.spotT>0?'証拠品を撮影中':n.req?REQ[n.req.type].text:n.state==='sleep'?'睡眠中':n.awk?'気まずい':'';
+  for(const n of G.fam){const c=n.chip,h=Math.round(n.hate),lv=n.gone?'gone':n.hate>=75?'d':n.hate>=50?'w':'';
+    const icon=n.arguing?'💢':n.spotT>0?(n.id==='mom'?'👀':'📸'):n.req?REQ[n.req.type].icon:'';const text=n.gone?'出発済み':n.arguing?`${n.arguing.def.name}と口論中`:n.spotT>0?(n.id==='mom'?'証拠品に気づいた':'証拠品を撮影中'):n.req?REQ[n.req.type].text:n.state==='sleep'?'睡眠中':n.awk?'気まずい':'';
     const k=h+lv+icon+text;if(c.k===k)continue;c.k=k;c.pct.textContent=h+'%';c.bar.style.width=h+'%';c.el.className='chip '+lv;c.rq.textContent=icon;c.rt.textContent=text;}
   for(const p of G.locals){const c=p.card;if(!c)continue;const cd=Math.ceil(p.cd),k=p.heldKey+'|'+cd;if(c.k===k)continue;c.k=k;
     c.hd.textContent=p.held.length?p.held.map(heldIcon).join(''):'手ぶら';c.cd.textContent=cd>0?`${p.def.skill.name} ${cd}`:`${p.def.skill.name} OK`;c.cd.classList.toggle('wait',cd>0);}
@@ -1300,7 +1372,7 @@ function renderMenu(){
     :'コントローラーのAボタン、またはキーボードの「.」キーで参加（最大4人）。←→でキャラ変更、Bで抜ける。キャラをクリックすると選択中のプレイヤーに割り当てます。';
   const stage=guest&&NET.lob?NET.lob.st:SEL.stage;
   $('#stage-list').innerHTML=STAGE_KEYS.map(k=>{const s=STAGES[k],b=BEST[k];return`<button type="button" class="stage-btn" data-id="${k}" aria-pressed="${k===stage}"${guest?' disabled':''}><span class="n">${s.name}</span><span class="t">${(s.time/60)|0}:${String(s.time%60).padStart(2,'0')}${b?' ／ 最高 '+(b.rank==='X'?'×':b.rank)+' '+b.score:''}</span></button>`;}).join('');
-  $('#stage-brief').textContent=STAGES[stage].brief+(slots.length>1?` ${slots.length}人なので目標は${stage==='morning'?'NPC全員':(5+3*(slots.length-1))+(stage==='guest'?'品':'皿')}。`:'');
+  $('#stage-brief').textContent=STAGES[stage].brief+(slots.length>1?` ${slots.length}人なので目標は${stage==='morning'?'家族と親戚全員':(5+4*(slots.length-1))+(stage==='guest'?'品':'皿')}。プレイヤー自身も家族の一員として怒り、要求し、口論するので、人数が増えるほど騒動も増えます。`:'');
   const pr=startProblem(slots),btn=$('#btn-start');
   btn.disabled=guest;btn.textContent=guest?'ホストの開始を待っています':slots.length>1?`${slots.length}人で団らん開始`:'団らん開始';
   if(!guest&&!pr)note('');else if(!guest)note(pr);else note('');
@@ -1701,7 +1773,7 @@ function applyActor(a,t){
   a.hate=clamp(num(t[4]),0,100);const f=num(t[5])|0;
   a.sit=!!(f&1);const gone=!!(f&2);if(gone!==a.gone){a.gone=gone;a.m.g.visible=!gone;}
   a.frozen=f&4?1:0;const st=f&16?1:0;if(local&&st&&a.stun<=0)rumble(a.dev,300,.8);a.stun=st;a.inGuest=!!(f&32);if(!local)a.dashing=!!(f&64);a.awk=!!(f&128);a.ringFlash=f&256?.5:0;
-  const rq=t[6];if(Array.isArray(rq)&&REQ_KEYS[rq[0]]){const type=REQ_KEYS[rq[0]];a.req={type,t:num(rq[1]),pat:REQ[type].pat};}else a.req=null;
+  const rq=t[6];if(Array.isArray(rq)&&REQ_KEYS[rq[0]]){const type=REQ_KEYS[rq[0]];a.req={type,t:num(rq[1]),pat:REQ[type].pat*(a.isPlayer?1.25:1)};}else a.req=null;
   const ai=num(t[7],-1)|0;a.arguing=ai>=0&&G.actors[ai]&&G.actors[ai]!==a?G.actors[ai]:null;
   a.spotT=num(t[8]);const sc=num(t[9])|0;a.state=['mirror','sleep','wash','toilet','queue'][sc]||'mirror';a.t=num(t[10]);a.waitT=num(t[10]);a.path=null;
   const hk=typeof t[11]==='string'?t[11].slice(0,4):'';if(hk!==a.heldKey){a.held=parseHeld(hk);refreshHeld(a);}
@@ -1723,6 +1795,7 @@ function simStep(dt){                                             // offline and
   if(G.phase==='play'&&!G.paused){
     G.time+=dt;G.timeLeft-=dt;
     for(const p of G.players){if(p.ctrl==='local')updatePlayerLocal(p,devInput(p.dev),dt);else updatePlayerRemote(p,dt);}
+    if(G.multi)for(const p of G.players)updateHumanFam(p,dt);
     for(const n of G.npcs)updateNpc(n,dt);
     updateSystems(dt);if(G.phase==='play')checkEnd();
     BGM.update(dt,G.heat);
